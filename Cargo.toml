@@ -1,0 +1,27 @@
+[package]
+name = "gargantua"
+version = "0.1.0"
+edition = "2021"
+description = "A scripted black-hole journey with real-time Schwarzschild ray tracing"
+repository = "https://github.com/nareshkarthigeyan/Gargantua"
+readme = "README.md"
+license = "MIT"
+
+[dependencies]
+bytemuck = { version = "1.16", features = ["derive"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+egui = "0.28.1"
+egui-wgpu = "0.28.1"
+egui-winit = "0.28.1"
+env_logger = "0.11"
+glam = "0.27"
+image = { version = "0.24.9", default-features = false, features = ["png"] }
+log = "0.4"
+pollster = "0.3"
+wgpu = "0.20.1"
+winit = "0.29.15"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

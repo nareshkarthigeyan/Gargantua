@@ -1,0 +1,18 @@
+/target/
+/_bmad/
+/_bmad-output/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/assets/music/*
+!/assets/music/README.md
+
+# Historical development captures
+/shots/dive.png
+/shots/far.png
+/shots/horizon.png
+/shots/menu.png
+/shots/orbit.png
