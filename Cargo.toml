@@ -1,6 +1,6 @@
 [package]
 name = "gargantua"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "A scripted black-hole journey with real-time Schwarzschild ray tracing"
 repository = "https://github.com/nareshkarthigeyan/Gargantua"
@@ -9,7 +9,6 @@ license = "MIT"
 
 [dependencies]
 bytemuck = { version = "1.16", features = ["derive"] }
-chrono = { version = "0.4", default-features = false, features = ["clock"] }
 egui = "0.28.1"
 egui-wgpu = "0.28.1"
 egui-winit = "0.28.1"
@@ -25,3 +24,6 @@ winit = "0.29.15"
 opt-level = 3
 lto = "thin"
 codegen-units = 1
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

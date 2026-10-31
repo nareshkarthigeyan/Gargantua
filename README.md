@@ -1,5 +1,7 @@
 # Gargantua
 
+<img src="assets/icons/gargantua.png" width="128" alt="Gargantua black-hole app icon">
+
 ### A Scripted Descent
 
 A **4:06 interactive film**: a deterministic spiral from 500 Schwarzschild
@@ -9,7 +11,19 @@ The sky, disk and lensing are rendered live with Schwarzschild null geodesics.
 
 ![Gargantua title screen](shots/journey-menu.png)
 
-## Quick start
+## Install
+
+Download the latest packages from [GitHub Releases](https://github.com/nareshkarthigeyan/Gargantua/releases/latest).
+
+- **macOS:** open the DMG and drag Gargantua onto Applications.
+- **Windows 10/11 x64:** run the setup EXE, or extract the portable ZIP and open Gargantua.exe.
+
+These are compiled, self-contained apps. You do **not** need Rust or development
+libraries. A working GPU driver is required. Builds are not commercially signed
+or Apple notarized; see the release notes for OS approval prompts. The personal
+soundtrack is excluded. SHA-256 checksums accompany each release.
+
+## Build from source
 
 Install the [Rust toolchain](https://www.rust-lang.org/tools/install), then:
 
@@ -19,7 +33,8 @@ Install the [Rust toolchain](https://www.rust-lang.org/tools/install), then:
 
 The project needs a GPU with a working wgpu backend. macOS on Apple Silicon is
 the tested platform. The renderer uses cross-platform wgpu/winit, but Linux and
-Windows builds have not yet been validated. The first build compiles the graphics
+Windows packages are built and installer/launch/uninstaller smoke-tested in GitHub
+Actions; interactive Windows graphics are not yet visually validated. The first build compiles the graphics
 dependencies and can take a few minutes.
 
 ### Optional local soundtrack
@@ -43,14 +58,14 @@ The music does not loop.
 
 | Control | Action |
 | --- | --- |
-| Either mouse button + drag | Look around, full horizontal rotation |
+| Move mouse or trackpad | Look around, full horizontal rotation |
 | Arrow keys | Look around |
 | X | Recenter on the cinematic framing |
 | Space / P | Pause/resume film and soundtrack together |
 | R | Replay film and music from the beginning |
 | Esc | Pause menu |
-| H | Hide overlays |
-| I | Expand clock and light-shift instruments |
+| H | Immersive mode (alias) |
+| I | Toggle immersive mode; hide all text and clocks |
 | 1 / 2 / 3 | Set render-quality ceiling |
 
 W/S/A/D, boost, roll and braking do not affect movement. Free look does not
@@ -68,17 +83,16 @@ spring back. You can continue looking around the frozen final scene.
 | 3:16 | Approaching the ISCO, the last stable circular orbit at 3 Rs |
 | 3:38 | Approaching the photon sphere at 1.5 Rs |
 | 3:46 | The event horizon at 1 Rs |
-| 3:50 | The final signal; authored freeze at 1.005 Rs |
+| 3:50 | The final signal; authored freeze at 1.0001 Rs |
 
-Facts appear as readable captions and world-anchored pixel holograms. The
-holograms stay in space as you pass. The default camera gradually frames the
-rim in the strong field so captured black directions do not hide all of the
-interesting optics. Mouse look is an independent offset from this framing.
+Facts appear in full in a pixel-font dialogue box for two seconds per stage,
+then the box and hints disappear. Its only hints are
+I · Immersive on the left and Esc · Menu on the right. Two elapsed clocks,
+Earth time and Your time, sit at the top right. Immersive mode hides everything.
+The default camera gradually frames the rim; mouse look remains independent.
 
-The soundtrack transport clock drives the route directly. Frame drops do not
-slow the route relative to the music. Pausing suspends the owned native audio
-process and its transport clock; replay resets both. The epoch calendar starts
-from local wall time, while the route and elapsed clock integrations are fixed.
+The soundtrack transport drives the route directly. Pausing suspends audio and
+the timeline; replay resets both. No dragging is needed to look around.
 
 ![The scripted approach and clock display](shots/journey-rim.png)
 
@@ -86,11 +100,11 @@ from local wall time, while the route and elapsed clock integrations are fixed.
 
 Units are G=c=1, Rs=1, M=0.5. The hole has mass 10^6 solar masses, giving
 Rs/c about 9.85 seconds. The trajectory is **authored, not a freefall geodesic**.
-Its local velocity is derived from the path derivative. Coordinate-time playback
-is chosen to keep the observer timelike, with slower playback near the hole to
-keep disk motion temporally legible. Proper time follows Schwarzschild
-4-velocity normalization. A preintegrated fixed-step clock table makes results
-independent of rendering frame rate.
+Its local velocity is derived from the path derivative. Playback advances
+24 geometric proper-time units per real second. The distant clock is derived
+from Schwarzschild 4-velocity normalization, including gravity and motion.
+A preintegrated fixed-step clock table makes results independent of frame rate.
+Both clocks display elapsed simulated time, not wall-clock dates.
 
 Each background pixel launches a ray in the observer's comoving frame, applies
 aberration, and integrates a Schwarzschild null geodesic using RK4 with conserved
@@ -100,24 +114,26 @@ The opaque thin disk spans 3–12 Rs. Orbital Doppler shift and gravitational sh
 come from photon constants of motion and emitter/observer 4-velocities.
 
 The final freeze is cinematic. **A falling observer's own time does not stop at
-the event horizon.** The physical clocks stop here because the authored film
-ends outside it. The detailed calendar alone has a labelled x274 time-lapse.
+the event horizon.** The optical view holds at a float32 cutoff of 1.0001 Rs. The double-precision
+clock trajectory approaches a gap of about 1e-15 Rs, reaching roughly one Earth
+year per local second. Clocks continue at that finite final ratio. Infinite
+clock separation is a horizon limit, not a finite reading outside it. Holding
+stationary this close requires thrust; this is an authored path, not free fall.
 
 This is Schwarzschild, not Kerr: there is no spin or frame dragging. The thin
 disk texture, thermal palette, small-star highlight compression, twinkling,
 bloom and exposure compensation are display/art choices, not a complete
-radiative-transfer model. World text is rasterized, not lensed astrophysical
-emission. Finite ray budgets limit extremely high-order photon images.
+radiative-transfer model. Finite ray budgets limit extremely high-order photon images.
 
 Reference: [Riazuelo, Seeing relativity I](https://arxiv.org/abs/1511.06025).
 
 ## Performance and validation
 
-The default uses a 70% scene render scale and a 512-step maximum ray budget.
-Most rays exit earlier. Quality ceilings are 50%/512, 70%/512 and 100%/896.
+The default uses a 70% scene render scale and a 768-step maximum ray budget.
+Most rays exit earlier. Quality ceilings are 50%/640, 70%/768 and 100%/1024.
 The app adjusts resolution between 45% and the chosen ceiling when frame time
-changes. Clock and audio timing remain unchanged. Procedural holograms are
-limited to the current stage; the rocket mesh and exhaust were removed.
+changes. Clock and audio timing remain unchanged. There is no spacecraft mesh,
+exhaust, crosshair, or world-space text.
 
     cargo test --offline
     cargo run --release -- --validate-optics
@@ -125,7 +141,7 @@ limited to the current stage; the rocket mesh and exhaust were removed.
     cargo run --release -- --screenshot shots/isco.png --at 210
     cargo run --release -- --screenshot shots/finale.png --at 230
 
-The ten Rust tests check route monotonicity, a complete revolution, timelike
+The Rust tests check route monotonicity, a complete revolution, timelike
 velocities, physical clock normalization, deterministic results across frame
 rates, pause behavior, soundtrack transport, and independent free look. The
 actual GPU integrator passes eleven analytic/reference optics checks, with
@@ -139,7 +155,7 @@ Headless captures never start the soundtrack.
 ## Assets
 
 HUD text uses Pixelify Sans, licensed under the SIL Open Font License included
-in assets/fonts/OFL.txt. World text uses native 5x7 pixel glyphs.
+in assets/fonts/OFL.txt.
 
 On macOS, the owned system audio player plays an optional local soundtrack once
 at 55% player volume. Normal shutdown stops it. Other platforms currently use
@@ -157,7 +173,6 @@ with this repository.
 | src/hud.rs | Pixel-style menus, facts, and clock instruments |
 | src/music.rs | Optional macOS audio playback and shared transport clock |
 | src/optics.rs | GPU checks against analytic/reference optics results |
-| src/space_text.rs | World-anchored pixel holograms |
 
 ## Status and contributing
 
@@ -172,3 +187,17 @@ GPU-capable machine when changing the ray tracer.
 Source code is available under the [MIT license](LICENSE). The bundled Pixelify
 Sans font retains its [SIL Open Font License](assets/fonts/OFL.txt). Any local
 soundtrack remains subject to its own rights and permissions.
+
+## Packaging and releases
+
+`packaging/macos/package.sh` creates an ad-hoc signed app bundle and verifies a
+DMG. `packaging/windows/installer.iss` creates a per-user installer with shortcuts,
+launch-on-finish, and uninstall support. The Windows runtime is statically linked.
+`build.rs` embeds the app icon in the Windows executable.
+
+Push a version tag matching Cargo.toml (for example `v0.2.0`) to run the native
+macOS and Windows builds. The release workflow publishes only after both jobs
+pass, and includes SHA256SUMS.txt. Manual workflow dispatch builds artifacts
+without publishing a release. Regenerate the icon on macOS with
+`swift scripts/generate-icon.swift assets/icons/gargantua.png`; platform icon
+containers are committed under assets/icons.

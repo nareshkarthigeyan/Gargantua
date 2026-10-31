@@ -3,6 +3,21 @@
 use std::process::{Child, Command, Stdio};
 use std::time::Instant;
 
+fn soundtrack_path() -> Option<std::path::PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let parent = exe.parent()?;
+    [
+        parent.join("soundtrack.m4a"),
+        parent.join("../Resources/soundtrack.m4a"),
+        std::path::PathBuf::from(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/assets/music/soundtrack.m4a"
+        )),
+    ]
+    .into_iter()
+    .find(|p| p.is_file())
+}
+
 pub struct Music {
     child: Option<Child>,
     running_since: Option<Instant>,
@@ -19,13 +34,10 @@ impl Music {
     pub fn start(&mut self) {
         self.stop();
         self.accumulated = 0.0;
-        if cfg!(target_os = "macos") {
+        if cfg!(target_os = "macos") && soundtrack_path().is_some() {
             match Command::new("/usr/bin/afplay")
                 .args(["-v", "0.55"])
-                .arg(concat!(
-                    env!("CARGO_MANIFEST_DIR"),
-                    "/assets/music/soundtrack.m4a"
-                ))
+                .arg(soundtrack_path().unwrap())
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

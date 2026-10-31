@@ -1,3 +1,4 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 //! GARGANTUA — a soundtrack-timed journey with Schwarzschild ray tracing.
 //!
 //! Native app:
@@ -8,7 +9,6 @@
 //!     cargo run --release -- --screenshot shots/horizon.png --horizon --frames 4
 
 mod app;
-mod clock;
 mod hud;
 mod journey;
 mod music;
@@ -16,7 +16,6 @@ mod optics;
 mod physics;
 mod renderer;
 mod ship_mesh;
-mod space_text;
 
 use std::error::Error;
 
@@ -48,15 +47,15 @@ Run: gargantua
 
 A 4:06 soundtrack-timed spiral from 500 Rs. One complete revolution by
 1:05, then a gradual descent. The final approach peaks at 3:50; the
-outro holds at 1.005 Rs. Movement is scripted; looking is unrestricted.
+outro holds at 1.0001 Rs. Movement is scripted; looking is unrestricted.
 
-Drag either mouse button / arrow keys   Look around
+Move mouse / trackpad / arrow keys     Look around (no held button)
 X                                      Recenter the view
 Space / P                              Pause the film and music
 R                                      Replay both from the beginning
 Esc                                    Pause menu
 H                                      Hide overlays
-I                                      Detailed clocks and light shifts
+I                                      Immersive mode (hide every overlay)
 1 / 2 / 3                              Quality ceiling
 
 Validation:

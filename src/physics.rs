@@ -5,27 +5,15 @@
 use glam::Vec3;
 
 pub const RS: f32 = 1.0;
-pub const HORIZON_STOP: f32 = 1.005;
+pub const HORIZON_STOP: f32 = 1.0001;
 pub const RS_METERS: f64 = 2.953_250_077e9;
 pub const RS_OVER_C: f64 = RS_METERS / 299_792_458.0;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Relativity {
-    pub radius_rs: f32,
-    pub alpha: f32,         // sqrt(1 - Rs/r), gravitational clock factor
-    pub gamma: f32,         // Lorentz factor relative to static observers
-    pub local_speed_c: f32, // speed measured by static observers, in c
-    pub time_ratio: f32,    // dt_far / dτ_ship
-}
-
-impl Relativity {
-    pub fn proper_per_far(self) -> f32 {
-        1.0 / self.time_ratio.max(1.0)
-    }
-
-    pub fn speed_dilation(self) -> f32 {
-        1.0 / self.gamma.max(1.0)
-    }
+    pub alpha: f32,      // sqrt(1 - Rs/r), gravitational clock factor
+    pub gamma: f32,      // Lorentz factor relative to static observers
+    pub time_ratio: f32, // dt_far / dτ_ship
 }
 
 #[derive(Clone, Debug)]
@@ -74,13 +62,10 @@ impl Ship {
         let wr = self.velocity.dot(n);
         let wt = (self.velocity - n * wr).length();
         let gamma = (1.0 + wr * wr / (alpha * alpha) + wt * wt).max(1.0).sqrt();
-        let local_speed = (1.0 - 1.0 / (gamma * gamma)).max(0.0).sqrt();
         let u_t = gamma / alpha;
         Relativity {
-            radius_rs: r,
             alpha,
             gamma,
-            local_speed_c: local_speed.min(0.999_99),
             time_ratio: u_t,
         }
     }

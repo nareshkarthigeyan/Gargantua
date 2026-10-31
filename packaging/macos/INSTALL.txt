@@ -1,0 +1,13 @@
+GARGANTUA
+
+Drag Gargantua.app onto Applications, then open it from Applications.
+No Rust, terminal commands, or library installation is needed.
+
+This independent release is ad-hoc signed, not Apple notarized.
+macOS may require approval in System Settings > Privacy & Security > Open Anyway.
+Only approve downloads you trust. No security settings need to be disabled.
+
+Requires macOS 11 or later and Metal-capable graphics.
+The personal-use soundtrack is not included in public releases.
+
+Move mouse/trackpad to look. I toggles immersive mode. Esc opens the menu.

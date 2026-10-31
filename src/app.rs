@@ -10,12 +10,11 @@ use std::time::Instant;
 
 use glam::{Mat4, Quat, Vec3};
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::{DeviceEvent, ElementState, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget};
 use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowBuilder};
+use winit::window::{CursorGrabMode, Window, WindowBuilder};
 
-use crate::clock;
 use crate::hud::{self, HudInfo, MenuAction};
 use crate::physics::Ship;
 use crate::renderer::{FrameData, PostUniform, Renderer, SceneUniform, TrailVertex};
@@ -26,7 +25,7 @@ const NEAR: f32 = 0.0015;
 const FAR: f32 = 600.0;
 const START_FRAMES: u32 = 90;
 /// (render scale, shader geodesic step budget)
-const QUALITY: [(f32, f32); 3] = [(0.50, 512.0), (0.70, 512.0), (1.00, 896.0)];
+const QUALITY: [(f32, f32); 3] = [(0.50, 640.0), (0.70, 768.0), (1.00, 1024.0)];
 
 /// Simulation-side state, independent of any window or GPU resource. Keeping it
 /// separate lets headless screenshot rendering drive exactly the same flight.
@@ -41,18 +40,11 @@ pub struct Sim {
     pub quality: usize,
     pub paused: bool,
     pub hud_visible: bool,
-    pub detailed_hud: bool,
     pub menu_mode: bool,
     pub started: bool,
     pub look_yaw: f32,
     pub look_pitch: f32,
-    pub look_held: bool,
     pub fps: f32,
-    pub epoch_unix: f64,
-    /// Earth seconds elapsed since launch, including the labelled time-lapse.
-    /// After the ship crosses the horizon this keeps running on its own so the
-    /// calendar visibly leaves the frozen ship clock behind.
-    pub earth_elapsed: f64,
     effect_time: f32,
     menu_time: f32,
 }
@@ -70,15 +62,11 @@ impl Sim {
             quality: 1,
             paused: false,
             hud_visible: true,
-            detailed_hud: false,
             menu_mode: false,
             started: false,
             look_yaw: 0.0,
             look_pitch: 0.0,
-            look_held: false,
             fps: 60.0,
-            epoch_unix: clock::unix_now(),
-            earth_elapsed: 0.0,
             effect_time: 0.0,
             menu_time: 0.0,
         };
@@ -94,8 +82,6 @@ impl Sim {
         self.look_yaw = 0.0;
         self.look_pitch = 0.0;
         self.camera_ready = false;
-        self.epoch_unix = clock::unix_now();
-        self.earth_elapsed = 0.0;
         self.update_camera(0.0);
     }
 
@@ -120,10 +106,14 @@ impl Sim {
         self.update_camera(dt);
     }
 
+    fn look_motion(&mut self, dx: f64, dy: f64) {
+        self.look_yaw = (self.look_yaw + dx as f32 * 0.0032).rem_euclid(std::f32::consts::TAU);
+        self.look_pitch = (self.look_pitch - dy as f32 * 0.0032).clamp(-1.5, 1.5);
+    }
+
     pub fn seek_journey(&mut self, time: f64) {
         self.journey.seek(time, &mut self.ship);
         self.effect_time = self.journey.elapsed.min(crate::journey::CLIMAX) as f32;
-        self.earth_elapsed = self.ship.far_seconds() * clock::EARTH_TIME_LAPSE;
     }
 
     fn update_camera(&mut self, _dt: f32) {
@@ -213,23 +203,23 @@ impl Sim {
 
     pub fn post_uniform(&self, width: u32, height: u32) -> PostUniform {
         let aspect = width.max(1) as f32 / height.max(1) as f32;
-        let exposure = if self.menu_mode { 1.55 } else { 1.05 };
+        let exposure = if self.menu_mode { 1.55 } else { 1.25 };
+        let r = self.camera_pos.length();
+        let angular_size = if r < 1.5 {
+            2.5980762 * (1.0 - 1.0 / r).sqrt() / r
+        } else {
+            (12.0 / r).min(1.0)
+        };
         PostUniform {
-            params: [0.18, exposure, self.effect_time, self.effect_time * 1.37],
+            params: [0.85, exposure, self.effect_time, angular_size],
             screen: [width as f32, height as f32, self.danger(), aspect],
         }
     }
 
     pub fn ship_vertices(&self, out: &mut Vec<ShipVertex>) {
+        // All narration is a screen-space dialogue box. Immersive mode has
+        // no world glyphs, labels, crosshair or other text to leak through.
         out.clear();
-        if !self.menu_mode {
-            crate::space_text::append(
-                out,
-                self.camera_pos,
-                self.camera_forward,
-                self.journey.elapsed,
-            );
-        }
     }
 
     pub fn effect_vertices(&self, out: &mut Vec<TrailVertex>) {
@@ -260,8 +250,8 @@ pub struct App {
     hud: HudGpu,
     egui_state: egui_winit::State,
     keys: HashSet<KeyCode>,
-    mouse_left: bool,
-    mouse_right: bool,
+    relative_look: bool,
+    focused: bool,
     last_cursor: Option<(f64, f64)>,
     ship_vertices: Vec<ShipVertex>,
     trail_vertices: Vec<TrailVertex>,
@@ -277,7 +267,11 @@ impl App {
             .with_title("GARGANTUA - A Scripted Descent")
             .with_inner_size(LogicalSize::new(1400.0, 900.0))
             .with_min_inner_size(LogicalSize::new(960.0, 640.0));
-        let window = Arc::new(attributes.build(event_loop)?);
+        let icon =
+            image::load_from_memory(include_bytes!("../assets/icons/gargantua.png"))?.into_rgba8();
+        let (width, height) = icon.dimensions();
+        let icon = winit::window::Icon::from_rgba(icon.into_raw(), width, height)?;
+        let window = Arc::new(attributes.with_window_icon(Some(icon)).build(event_loop)?);
 
         let instance = wgpu::Instance::default();
         let surface = instance.create_surface(window.clone())?;
@@ -355,8 +349,8 @@ impl App {
             hud,
             egui_state,
             keys: HashSet::new(),
-            mouse_left: false,
-            mouse_right: false,
+            relative_look: false,
+            focused: true,
             last_cursor: None,
             ship_vertices: Vec::new(),
             trail_vertices: Vec::new(),
@@ -383,8 +377,7 @@ impl App {
         self.sim.menu_mode = false;
         self.sim.paused = false;
         self.keys.clear();
-        self.mouse_left = false;
-        self.mouse_right = false;
+        self.capture_pointer();
     }
 
     fn toggle_menu(&mut self) {
@@ -394,10 +387,8 @@ impl App {
             self.sim.menu_mode = true;
             self.sim.paused = true;
             self.music.set_paused(true);
-            self.sim.look_held = false;
             self.keys.clear();
-            self.mouse_left = false;
-            self.mouse_right = false;
+            self.release_pointer();
         }
     }
 
@@ -454,7 +445,7 @@ impl App {
                         self.sim.reset();
                         self.start_flight();
                     }
-                    KeyCode::KeyI => self.sim.detailed_hud = !self.sim.detailed_hud,
+                    KeyCode::KeyI => self.sim.hud_visible = !self.sim.hud_visible,
                     KeyCode::KeyH => self.sim.hud_visible = !self.sim.hud_visible,
                     KeyCode::Digit1 => self.set_quality(0),
                     KeyCode::Digit2 => self.set_quality(1),
@@ -468,6 +459,23 @@ impl App {
         }
     }
 
+    fn capture_pointer(&mut self) {
+        self.last_cursor = None;
+        self.relative_look = self.window.set_cursor_grab(CursorGrabMode::Locked).is_ok();
+        self.window.set_cursor_visible(false);
+    }
+    fn release_pointer(&mut self) {
+        let _ = self.window.set_cursor_grab(CursorGrabMode::None);
+        self.window.set_cursor_visible(true);
+        self.relative_look = false;
+        self.last_cursor = None;
+    }
+    fn look_motion(&mut self, dx: f64, dy: f64) {
+        if self.focused && !self.sim.menu_mode {
+            self.sim.look_motion(dx, dy);
+        }
+    }
+
     pub fn window_event(&mut self, event: &WindowEvent) {
         match event {
             WindowEvent::Resized(size) => self.resize(size.width, size.height),
@@ -475,43 +483,36 @@ impl App {
                 let size = self.window.inner_size();
                 self.resize(size.width, size.height);
             }
-            WindowEvent::Focused(false) => {
+            WindowEvent::Focused(focused) => {
+                self.focused = *focused;
                 self.keys.clear();
-                self.mouse_left = false;
-                self.mouse_right = false;
-                self.sim.look_held = false;
+                if *focused && !self.sim.menu_mode {
+                    self.capture_pointer();
+                } else {
+                    self.release_pointer();
+                }
             }
+            WindowEvent::CursorLeft { .. } => self.last_cursor = None,
             WindowEvent::KeyboardInput { event, .. } => self.handle_key(event),
             WindowEvent::CursorMoved { position, .. } => {
-                if !self.sim.menu_mode {
-                    let scale = self.window.scale_factor().max(0.5);
+                if !self.sim.menu_mode && self.focused && !self.relative_look {
                     if let Some((last_x, last_y)) = self.last_cursor {
-                        let dx = ((position.x - last_x) / scale) as f32;
-                        let dy = ((position.y - last_y) / scale) as f32;
-                        if self.mouse_left || self.mouse_right {
-                            self.sim.look_yaw =
-                                (self.sim.look_yaw + dx * 0.0045).rem_euclid(std::f32::consts::TAU);
-                            self.sim.look_pitch =
-                                (self.sim.look_pitch - dy * 0.0045).clamp(-1.5, 1.5);
-                        }
+                        let scale = self.window.scale_factor().max(0.5);
+                        self.look_motion(
+                            (position.x - last_x) / scale,
+                            (position.y - last_y) / scale,
+                        );
                     }
                 }
                 self.last_cursor = Some((position.x, position.y));
             }
-            WindowEvent::MouseInput { state, button, .. } => {
-                let down = *state == ElementState::Pressed;
-                match button {
-                    winit::event::MouseButton::Left => {
-                        self.mouse_left = down;
-                        self.sim.look_held = down && !self.sim.menu_mode;
-                    }
-                    winit::event::MouseButton::Right => self.mouse_right = down,
-                    _ => {}
-                }
-                if down {
-                    // Start a fresh drag from wherever the pointer already is.
-                    self.last_cursor = None;
-                }
+            WindowEvent::MouseWheel { delta, .. } if !self.sim.menu_mode => {
+                // Two-finger scrolling also provides button-free trackpad look.
+                let (x, y) = match delta {
+                    MouseScrollDelta::LineDelta(x, y) => (*x as f64 * 18.0, *y as f64 * 18.0),
+                    MouseScrollDelta::PixelDelta(p) => (p.x, p.y),
+                };
+                self.look_motion(x, -y);
             }
             WindowEvent::RedrawRequested => self.redraw(),
             _ => {}
@@ -665,22 +666,11 @@ impl App {
 }
 
 impl Sim {
-    pub fn hud_info(&self, fps: f32, render_scale: f32) -> HudInfo<'_> {
-        let target = -self.camera_pos.normalize();
+    pub fn hud_info(&self, _fps: f32, _render_scale: f32) -> HudInfo {
         HudInfo {
-            target_view: [
-                target.dot(self.camera_right),
-                target.dot(self.camera_up),
-                target.dot(self.camera_forward),
-            ],
-            ship: &self.ship,
-            paused: self.paused,
             journey_time: self.journey.elapsed,
-            detailed: self.detailed_hud,
-            fps,
-            render_scale,
-            epoch_unix: self.epoch_unix,
-            earth_elapsed: self.earth_elapsed,
+            proper_seconds: self.ship.proper_seconds(),
+            far_seconds: self.ship.far_seconds(),
         }
     }
 }
@@ -747,6 +737,16 @@ pub fn run_native() -> Result<(), Box<dyn Error>> {
                         log::error!("failed to create application: {err}");
                         active.exit();
                     }
+                }
+            }
+        }
+        winit::event::Event::DeviceEvent {
+            event: DeviceEvent::MouseMotion { delta },
+            ..
+        } => {
+            if let Some(app) = app.as_mut() {
+                if app.relative_look {
+                    app.look_motion(delta.0, delta.1);
                 }
             }
         }
@@ -1111,6 +1111,18 @@ pub fn parse_screenshot_args(args: &[String]) -> Option<ScreenshotOptions> {
 #[cfg(test)]
 mod scripted_tests {
     use super::*;
+    #[test]
+    fn pointer_motion_needs_no_button_and_never_changes_the_route() {
+        let mut sim = Sim::new();
+        sim.seek_journey(100.0);
+        let position = sim.ship.position;
+        sim.look_motion(150.0, -40.0);
+        assert!(sim.look_yaw.abs() > 0.4);
+        assert!(sim.look_pitch > 0.1);
+        assert_eq!(sim.ship.position, position);
+        assert_eq!(sim.journey.elapsed, 100.0);
+    }
+
     #[test]
     fn free_look_changes_only_the_view_even_after_the_ending() {
         let mut sim = Sim::new();

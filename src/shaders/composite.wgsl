@@ -45,7 +45,10 @@ fn fs_main(in: VOut) -> @location(0) vec4<f32> {
     let uv = in.uv;
     var hdr = textureSample(scene_tex, scene_sampler, uv).rgb;
     let bloom = textureSample(bloom_tex, scene_sampler, uv).rgb * post.params.x;
-    hdr += bloom;
+    // Optical bloom stays attached to bright emission; the warm response
+    // preserves a white-hot disk core with a visible amber halo.
+    let energy = dot(bloom, vec3<f32>(0.2126, 0.7152, 0.0722));
+    hdr += mix(bloom, energy * vec3<f32>(2.4, 0.36, 0.015), 0.8);
 
     // Gentle chromatic warm/cool grading before the display transform.
     hdr *= vec3<f32>(1.02, 1.0, 0.97);

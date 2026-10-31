@@ -622,14 +622,14 @@ impl Renderer {
             &self.blur_h_params,
             0,
             bytemuck::bytes_of(&BloomParams {
-                values: [0.0, 0.0, 1.6 / bw as f32, 0.0],
+                values: [0.0, 0.0, 3.2 / bw as f32, 0.0],
             }),
         );
         queue.write_buffer(
             &self.blur_v_params,
             0,
             bytemuck::bytes_of(&BloomParams {
-                values: [0.0, 0.0, 0.0, 1.6 / bh as f32],
+                values: [0.0, 0.0, 0.0, 3.2 / bh as f32],
             }),
         );
 
@@ -660,6 +660,22 @@ impl Renderer {
     ) {
         queue.write_buffer(&self.scene_uniform, 0, bytemuck::bytes_of(&frame.scene));
         queue.write_buffer(&self.post_uniform, 0, bytemuck::bytes_of(&frame.post));
+        // Blur footprint follows angular disk size, in viewport units.
+        let radius = 0.012 * frame.post.params[3];
+        queue.write_buffer(
+            &self.blur_h_params,
+            0,
+            bytemuck::bytes_of(&BloomParams {
+                values: [0.0, 0.0, radius / frame.post.screen[3], 0.0],
+            }),
+        );
+        queue.write_buffer(
+            &self.blur_v_params,
+            0,
+            bytemuck::bytes_of(&BloomParams {
+                values: [0.0, 0.0, 0.0, radius],
+            }),
+        );
 
         let ship_bytes = bytemuck::cast_slice(frame.ship_vertices);
         if !ship_bytes.is_empty() {

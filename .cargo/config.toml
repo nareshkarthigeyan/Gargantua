@@ -1,0 +1,3 @@
+# Release EXEs include the MSVC runtime; users need no Rust/VC++ installer.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

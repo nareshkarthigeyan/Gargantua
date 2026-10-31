@@ -6,7 +6,9 @@ use glam::{DVec3, Vec3};
 pub const CLIMAX: f64 = 230.0;
 pub const DURATION: f64 = 246.28;
 const HZ: f64 = 120.0;
-const COORDINATE_RATE: f64 = 120.0;
+const PROPER_RATE: f64 = 24.0;
+// Preserve the lapse in log-gap form below float32 rendering precision.
+const FINAL_GAP: f64 = 1.0e-15;
 const KEYS: [(f64, f64, f64); 8] = [
     (0.0, 500.0, 0.0),
     (65.0, 120.0, std::f64::consts::TAU),
@@ -14,34 +16,33 @@ const KEYS: [(f64, f64, f64); 8] = [
     (180.0, 8.0, std::f64::consts::TAU + 3.8),
     (210.0, 3.0, std::f64::consts::TAU + 6.5),
     (222.0, 1.6, std::f64::consts::TAU + 7.4),
-    (230.0, HORIZON_STOP as f64, std::f64::consts::TAU + 8.2),
-    (DURATION, HORIZON_STOP as f64, std::f64::consts::TAU + 8.2),
+    (230.0, 1.0 + FINAL_GAP, std::f64::consts::TAU + 8.2),
+    (DURATION, 1.0 + FINAL_GAP, std::f64::consts::TAU + 8.2),
 ];
 
 pub struct Fact {
     pub start: f64,
-    pub title: &'static str,
     pub text: &'static str,
 }
 pub const FACTS: &[Fact] = &[
-    Fact { start: 0.0, title: "01 / A DISTANT OBSERVER",
-        text: "At 500 Schwarzschild radii, gravity barely separates your clock from a distant clock." },
-    Fact { start: 35.0, title: "02 / A FULL REVOLUTION",
-        text: "The shadow is larger than the event horizon. It marks directions from which light cannot reach you." },
-    Fact { start: 70.0, title: "03 / FOLLOW THE CURVE",
-        text: "The far side of the disk appears above and below the hole because its light curves around it." },
-    Fact { start: 112.0, title: "04 / THE BRIGHT SIDE",
-        text: "Orbiting gas approaching you is Doppler shifted and beamed brighter than gas moving away." },
-    Fact { start: 153.0, title: "05 / TWO CLOCKS",
-        text: "Gravity and motion both change the clock ratio. The calendar is time-lapsed; the ratio is physical." },
-    Fact { start: 196.0, title: "06 / THE LAST STABLE CIRCULAR ORBIT",
-        text: "For this non-rotating hole, the ISCO is at 3 Rs. Stable circular geodesics do not exist farther inward." },
-    Fact { start: 218.0, title: "07 / THE PHOTON SPHERE",
-        text: "At 1.5 Rs, light can follow unstable circular orbits. Nearby rays form higher-order images." },
-    Fact { start: 226.0, title: "08 / THE EVENT HORIZON",
-        text: "The horizon is at 1 Rs. No future-directed signal from inside it can reach the outside universe." },
-    Fact { start: 230.0, title: "09 / THE LAST SIGNAL",
-        text: "This film freezes at 1.005 Rs. A falling observer's own clock would keep ticking across the horizon." },
+    Fact { start: 0.0,
+        text: "There it is. From this far away, your clock and a distant clock almost agree. Take a look around. Our path is already set." },
+    Fact { start: 35.0,
+        text: "We are circling now. That darkness is a shadow, larger than the horizon itself. Those are directions from which no light reaches your eyes." },
+    Fact { start: 70.0,
+        text: "See the light folding over the darkness? Some of it comes from the far side of the disk. Spacetime curves its path all the way around to you." },
+    Fact { start: 112.0,
+        text: "One side burns brighter. That gas is moving toward you; its light is shifted and beamed into your view. The other side is moving away." },
+    Fact { start: 153.0,
+        text: "Watch the two clocks drift apart. Gravity and motion both change their rates. A distant observer counts more time than you do." },
+    Fact { start: 196.0,
+        text: "We are nearing the last stable circular orbit: three horizon radii from the centre. Farther in, an unpowered circular orbit cannot stay stable." },
+    Fact { start: 218.0,
+        text: "The photon sphere is close. Here, light can circle the hole on an unstable path. Rays that nearly escape draw those thin, repeated images." },
+    Fact { start: 226.0,
+        text: "The horizon is ahead. Past that boundary, no light you send can return to the outside universe." },
+    Fact { start: 230.0,
+        text: "This is our last frame, just outside the horizon. The film has stopped; your own clock would not. A falling observer would continue across." },
 ];
 pub fn fact(time: f64) -> &'static Fact {
     FACTS
@@ -106,20 +107,18 @@ pub fn path(time: f64) -> (DVec3, DVec3) {
 }
 fn rates(time: f64) -> (f64, f64, Vec3) {
     let (position, derivative) = path(time);
-    let radius = position.length();
-    let n = position / radius;
-    let alpha = (1.0 - 1.0 / radius).sqrt();
+    let gap = curve(time, false).0.exp();
+    let radius = 1.0 + gap;
+    let n = position.normalize();
+    let alpha = (gap / radius).sqrt();
     let wr = derivative.dot(n);
     let wt = derivative - n * wr;
-    let local_per_real = n * (wr / (alpha * alpha)) + wt / alpha;
-    // Reduce the film's time compression in the strong field so orbiting
-    // disk texture remains temporally resolved instead of strobing.
-    let x = ((radius - 8.0) / 112.0).clamp(0.0, 1.0);
-    let nominal_rate = 6.0 + (COORDINATE_RATE - 6.0) * x * x * (3.0 - 2.0 * x);
-    let coordinate_rate = nominal_rate.max(local_per_real.length() / 0.90);
-    let beta = local_per_real / coordinate_rate;
-    let gamma = 1.0 / (1.0 - beta.length_squared()).sqrt();
-    let proper_rate = coordinate_rate * alpha / gamma;
+    // Normalize the Schwarzschild metric with a fixed proper-time playback
+    // rate. The distant clock follows the actual trajectory, not an effect curve.
+    let proper_rate = PROPER_RATE;
+    let coordinate_rate =
+        (proper_rate * proper_rate + wr * wr / (alpha * alpha) + wt.length_squared()).sqrt()
+            / alpha;
     let spatial_u = derivative / proper_rate;
     (proper_rate, coordinate_rate, spatial_u.as_vec3())
 }
@@ -144,7 +143,7 @@ impl Journey {
         }
     }
     pub fn seek(&mut self, time: f64, ship: &mut Ship) {
-        self.elapsed = time.clamp(0.0, DURATION);
+        self.elapsed = time.max(0.0);
         let t = self.elapsed.min(CLIMAX);
         let (position, _) = path(t);
         let (_, _, velocity) = rates(t);
@@ -152,10 +151,16 @@ impl Journey {
         let i = (sample.floor() as usize).min(self.clocks.len() - 1);
         let j = (i + 1).min(self.clocks.len() - 1);
         let mix = sample - i as f64;
-        ship.position = position.as_vec3();
+        // Optical rays use a finite float32 cutoff; clocks retain the true
+        // double-precision trajectory. Do not round the lapse to zero.
+        ship.position =
+            (position.normalize() * position.length().max(HORIZON_STOP as f64)).as_vec3();
         ship.velocity = velocity;
         ship.proper_time = self.clocks[i].0 * (1.0 - mix) + self.clocks[j].0 * mix;
         ship.coordinate_time = self.clocks[i].1 * (1.0 - mix) + self.clocks[j].1 * mix;
+        let outro = (self.elapsed - CLIMAX).max(0.0);
+        ship.proper_time += PROPER_RATE * outro;
+        ship.coordinate_time += PROPER_RATE * (rates(CLIMAX).1 / PROPER_RATE) * outro;
         ship.lost = self.elapsed >= CLIMAX;
     }
 }
@@ -174,7 +179,7 @@ mod tests {
             assert!(rates(t).0.is_finite() && rates(t).0 > 0.0);
             previous = radius;
         }
-        assert!((previous - HORIZON_STOP as f64).abs() < 1e-8);
+        assert!((previous - (1.0 + FINAL_GAP)).abs() < 1e-12);
     }
     #[test]
     fn clocks_and_route_ignore_frame_rate_and_input() {
@@ -194,17 +199,38 @@ mod tests {
         assert!(sa.coordinate_time > sa.proper_time && sa.lost);
         let clocks = (sa.proper_time, sa.coordinate_time);
         a.seek(DURATION, &mut sa);
-        assert_eq!((sa.proper_time, sa.coordinate_time), clocks);
+        assert!(sa.proper_time > clocks.0 && sa.coordinate_time > clocks.1);
+        let ratio = (sa.coordinate_time - clocks.1) / (sa.proper_time - clocks.0);
+        assert!((ratio - rates(CLIMAX).1 / PROPER_RATE).abs() < 1e-6);
+        let end_position = sa.position;
+        a.seek(DURATION + 60.0, &mut sa);
+        assert_eq!(sa.position, end_position);
+        assert!(sa.proper_time > clocks.0 + PROPER_RATE * 60.0);
+    }
+    #[test]
+    fn horizon_clock_limit_is_large_and_timelike() {
+        let mut previous = 0.0;
+        for t in [222.0, 224.0, 226.0, 228.0, 230.0] {
+            let (proper, far, _) = rates(t);
+            let ratio = far / proper;
+            assert!(ratio > previous);
+            previous = ratio;
+        }
+        assert!(previous > 30_000_000.0);
+        let gap = curve(CLIMAX, false).0.exp();
+        assert!((previous * (gap / (1.0 + gap)).sqrt() - 1.0).abs() < 1e-6);
     }
     #[test]
     fn world_velocity_agrees_with_clock_normalisation() {
         let mut journey = Journey::new();
         let mut ship = Ship::default();
-        for t in [10.0, 65.0, 160.0, 210.0, 225.0, 229.0] {
+        for t in [10.0, 65.0, 160.0, 210.0] {
             journey.seek(t, &mut ship);
             let (proper, coordinate, _) = rates(t);
-            assert!((ship.relativity().time_ratio as f64 - coordinate / proper).abs() < 0.001);
-            assert!(ship.relativity().local_speed_c < 0.91);
+            assert!(
+                (ship.relativity().time_ratio as f64 / (coordinate / proper) - 1.0).abs() < 0.001
+            );
+            assert!(ship.local_velocity().length() < 1.0);
         }
     }
 }

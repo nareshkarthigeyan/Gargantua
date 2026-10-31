@@ -149,7 +149,7 @@ fn star_layer(dir: vec3<f32>, scale: f32, threshold: f32,
     let core = exp(-d * d / (radius * radius));
     let tint = blackbody((3200.0 + 14000.0 * rnd.y * rnd.y) * boost);
     let twinkle = 0.84 + 0.16 * sin(scene.misc.z * (0.8 + rnd.z) + rnd.y * TAU);
-    return tint * core * (0.22 + 1.15 * pow(rnd.z, 3.0)) * twinkle;
+    return tint * core * (0.28 + 1.65 * pow(rnd.z, 3.0)) * twinkle;
 }
 
 fn sky(dir_in: vec3<f32>, frequency_shift: f32) -> vec3<f32> {
@@ -159,10 +159,10 @@ fn sky(dir_in: vec3<f32>, frequency_shift: f32) -> vec3<f32> {
     // Sparse, layered stars. Six-sided avoidance of a grid seam is unnecessary
     // at these angular sizes, and keeps the shader light enough for real time.
     var col = vec3<f32>(0.0);
-    col += star_layer(dir, 90.0, 0.94, vec3<f32>(1.3, 7.1, 2.7), 0.045, boost);
-    col += star_layer(dir, 220.0, 0.965, vec3<f32>(4.2, 2.9, 8.3), 0.040, boost);
-    col += star_layer(dir, 440.0, 0.98, vec3<f32>(7.4, 0.3, 5.2), 0.035, boost);
-    col += star_layer(dir, 700.0, 0.99, vec3<f32>(2.2, 9.8, 1.4), 0.036, boost)
+    col += star_layer(dir, 90.0, 0.84, vec3<f32>(1.3, 7.1, 2.7), 0.045, boost);
+    col += star_layer(dir, 220.0, 0.93, vec3<f32>(4.2, 2.9, 8.3), 0.040, boost);
+    col += star_layer(dir, 440.0, 0.96, vec3<f32>(7.4, 0.3, 5.2), 0.035, boost);
+    col += star_layer(dir, 700.0, 0.975, vec3<f32>(2.2, 9.8, 1.4), 0.036, boost)
         * 0.65;
 
 
@@ -203,7 +203,7 @@ fn disk_emission(
 
     // Soft edges. The inner edge is at the ISCO, where the disk is truncated.
     let inner_edge = smoothstep(DISK_INNER, DISK_INNER + 0.42, r);
-    let outer_edge = 1.0 - smoothstep(DISK_OUTER * 0.66, DISK_OUTER, r);
+    let outer_edge = 1.0 - smoothstep(DISK_OUTER * 0.82, DISK_OUTER, r);
     let edge = inner_edge * outer_edge;
     if (edge <= 0.001) {
         return vec4<f32>(0.0);
@@ -211,7 +211,7 @@ fn disk_emission(
 
     // Standard thin-disk temperature profile, with a hotter inner torus. The
     // outer disk is deliberately cool enough to stay amber instead of beige.
-    let temp = 7000.0 * pow(DISK_INNER / r, 0.80) * (0.95 + 0.18 * filaments);
+    let temp = 5500.0 * pow(DISK_INNER / r, 0.80) * (0.95 + 0.18 * filaments);
 
     // Frequency ratio from conserved photon E and L, and the emitter's
     // circular Schwarzschild 4-velocity. Backward rays have opposite spatial
@@ -224,17 +224,25 @@ fn disk_emission(
     let tint = blackbody(observed_temp);
     // The g^3 factor keeps the approaching side brighter, but the coefficient
     // is deliberately restrained: it is very easy to clip an accretion disk.
-    let brightness = 0.42 * pow(max(g, 0.08), 3.0) * edge
+    let brightness = 1.05 * pow(max(g, 0.08), 3.0) * edge
         * (0.24 + 0.95 * filaments) * (0.66 + 0.44 * rings)
         * pow(DISK_INNER / r, 1.65);
-    let hot_core = vec3<f32>(1.0, 0.80, 0.54) * 0.030 * inner_edge * pow(g, 2.2);
+    let hot_core = vec3<f32>(1.0, 0.80, 0.54) * 0.065 * inner_edge * pow(g, 2.2);
+    // Small emissive knots in the shearing gas, not stars shining through
+    // the opaque disk. Their positions advect at the local Keplerian rate.
+    let knot_uv = vec2<f32>(theta * 64.0 / TAU, log(r)*96.0);
+    let knot_cell = floor(knot_uv);
+    let knot_seed = hash31(vec3<f32>(knot_cell, 17.0));
+    let knot_delta = fract(knot_uv)-vec2<f32>(0.5);
+    let knot = smoothstep(0.94,0.99,knot_seed) * exp(-dot(knot_delta,knot_delta)/0.012);
+    let highlights = blackbody(observed_temp*1.25) * knot * edge * 2.4 * min(pow(g,3.0),64.0);
     let alpha = 1.0; // optically thick disk; background stars cannot shine through
 
     // Camera highlight compensation preserves the filaments under enormous
     // observed frequency shifts instead of clipping the whole disk to white.
     let meter_shift = min(observer_shift, 24.0);
     let highlight_compensation = 1.0 / (1.0 + 0.025 * pow(meter_shift, 3.0));
-    return vec4<f32>((tint * brightness + hot_core) * highlight_compensation, alpha);
+    return vec4<f32>((tint * brightness + hot_core + highlights) * highlight_compensation, alpha);
 }
 
 struct RayResult {
@@ -262,14 +270,14 @@ fn integrate_ray(origin: vec3<f32>, direction: vec3<f32>, time: f32,
     }
     for (var i = 0u; i < max_steps; i += 1u) {
         let r = length(ray.x);
-        if (r <= 1.0001) { result.fate = 0u; break; }
+        if (r <= 1.00001) { result.fate = 0u; break; }
         if (r > escape_r && dot(ray.x, ray.v) > 0.0) {
             result.fate = 1u;
             break;
         }
-        // At most 0.025 radians per step and 16% of the current radius.
+        // At most 0.020 radians per step and 16% of the current radius.
         // RK4 preserves weak-field deflection and the critical capture cone.
-        let dt = min(r * 0.16, 0.025 * r * r / h);
+        let dt = min(r * 0.16, 0.020 * r * r / h);
         let old = ray;
         ray = step_ray(ray, h2, dt);
         // Retarded emission time: dt/dlambda = E/(1-Rs/r), with E=1.
@@ -277,7 +285,7 @@ fn integrate_ray(origin: vec3<f32>, direction: vec3<f32>, time: f32,
         let new_lapse = max(1.0 - 1.0/length(ray.x), 0.0001);
         let delay_before = coordinate_delay;
         coordinate_delay += dt*0.5*(1.0/old_lapse + 1.0/new_lapse);
-        if (length(ray.x) <= 1.0001) { result.fate = 0u; break; }
+        if (length(ray.x) <= 1.00001) { result.fate = 0u; break; }
         if (draw_disk && old.x.y * ray.x.y <= 0.0 &&
             abs(old.x.y - ray.x.y) > 1e-8) {
             let f = clamp(old.x.y / (old.x.y - ray.x.y), 0.0, 1.0);
